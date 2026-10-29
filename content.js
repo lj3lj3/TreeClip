@@ -498,12 +498,8 @@ document.addEventListener('keyup', function(event) {
 
       consecutiveSameTypeElements = [];
 
-      // 如果正在框选，取消框选
-      if (isSelecting) {
-        cancelBoxSelection();
-      }
-
-      //console.log('选择键组合已释放');
+      // 松开选择键不再销毁已拖出的选框：结算统一交给 mouseup，
+      // 避免「先松 Shift 后松鼠标」导致框选静默失败。Esc 与窗口失焦仍可取消。
     }
   }
 
@@ -1439,7 +1435,7 @@ document.addEventListener('mousemove', function(event) {
     return;
   }
 
-  if (isSelecting && (isShiftPressed || selectKeyCombinationActive)) {
+  if (isSelecting && selectBox) {
     // 更新选择框（考虑页面滚动位置）
     updateBoxSelection(event.clientX + window.pageXOffset, event.clientY + window.pageYOffset);
 
@@ -1455,7 +1451,7 @@ document.addEventListener('mouseup', function(event) {
     return;
   }
 
-  if (isSelecting && (isShiftPressed || selectKeyCombinationActive)) {
+  if (isSelecting && selectBox) {
     // 完成框选
     finishBoxSelection();
 
@@ -4013,6 +4009,34 @@ function cancelSelection() {
 // =============================================
 // 剪贴板管理系统 - 处理选中内容的复制和格式化
 // =============================================
+// 写入剪贴板：非安全上下文（http 页面）没有 navigator.clipboard，回退到 execCommand
+function writeTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return writeTextByExecCommand(text);
+}
+
+// 兼容 http 页面：用隐藏 textarea + execCommand('copy') 兜底写入剪贴板
+function writeTextByExecCommand(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+
+  const previousActiveElement = document.activeElement;
+  textarea.select();
+  const copySucceeded = document.execCommand('copy');
+  textarea.remove();
+  if (previousActiveElement instanceof HTMLElement) previousActiveElement.focus();
+
+  return copySucceeded ? Promise.resolve() : Promise.reject(new Error('execCommand copy failed'));
+}
+
 // 更新剪贴板内容函数
 function updateClipboard({ write = isRealtimeCopyEnabled } = {}) {
   if (selectedElements.length === 0) {
@@ -4069,9 +4093,7 @@ function updateClipboard({ write = isRealtimeCopyEnabled } = {}) {
 
   // 仅在启用实时复制时才写入剪贴板
   if (write) {
-    navigator.clipboard.writeText(collectedText)
-      // .then(() => console.log('已更新剪贴板内容'))
-      .catch(err => { /* console.error('更新剪贴板失败: ', err); */ });
+    writeTextToClipboard(collectedText).catch(() => {});
   }
 
   return collectedText; // 总是返回处理后的文本
@@ -4086,7 +4108,7 @@ async function copySelectionToClipboard() {
   }
 
   try {
-    await navigator.clipboard.writeText(textToCopy);
+    await writeTextToClipboard(textToCopy);
     if (!hasVisibleCopyButton) showTemporaryMessage(t('msg_copied'));
   } catch {
     if (!hasVisibleCopyButton) showTemporaryMessage(t('msg_copy_failed'));
