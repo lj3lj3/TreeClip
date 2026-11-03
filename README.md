@@ -124,6 +124,7 @@ TreeClip 提供了多种灵活的文本选择方式（同类选择、点选、�
 
 - **去除重复项：** 自动删除复制内容完全重复的条目。
 - **实时复制：** 选择内容发生变化时自动更新剪贴板，无需每次手动点击“复制”。
+- **复制预览：** 详情面板实时展示即将复制的内容与统计，点击预览即可复制。
 
 ## 快捷键配置
 
@@ -297,6 +298,7 @@ Choose separators and cleanup rules, remove duplicates, or copy updates in real 
 
 - **Remove duplicates:** Automatically delete entries whose copied content is identical.
 - **Live copy:** Update the clipboard whenever the selection changes, without clicking Copy each time.
+- **Copy preview:** The details panel shows exactly what will be copied, with live stats; click the preview to copy.
 
 ## Keyboard shortcuts
 

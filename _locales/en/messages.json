@@ -202,6 +202,29 @@
   "ui_no_text_preview": {
     "message": "No text preview"
   },
+  "ui_copy_preview": {
+    "message": "Copy preview"
+  },
+  "ui_copy_preview_hint": {
+    "message": "Click to copy — exactly what $KEY$ copies",
+    "placeholders": {
+      "key": { "content": "$1" }
+    }
+  },
+  "ui_preview_stats": {
+    "message": "$COUNT$ items · $CHARS$ chars",
+    "placeholders": {
+      "count": { "content": "$1" },
+      "chars": { "content": "$2" }
+    }
+  },
+  "ui_preview_truncated": {
+    "message": "Showing first $SHOWN$ of $TOTAL$ items",
+    "placeholders": {
+      "shown": { "content": "$1" },
+      "total": { "content": "$2" }
+    }
+  },
   "ui_click_to_expand": {
     "message": "Expand"
   },

@@ -85,7 +85,8 @@ const {
   getSummaryTargetDetent,
   matchesElementType,
   normalizeShortcutKey,
-  parseElementTypeKey
+  parseElementTypeKey,
+  truncatePreview
 } = globalThis.TreeClipCore;
 
 // =============================================
@@ -162,6 +163,8 @@ let isHierarchyExpanded = false;
 let isHierarchySectionOpen = false;
 // 输出格式区块是否展开
 let isOutputFormatExpanded = false;
+// 复制预览区块是否展开
+let isCopyPreviewExpanded = true;
 // =============================================
 // 选择高亮管理 - 仅维护 TreeClip 自己的标记
 // =============================================
@@ -173,6 +176,9 @@ const SELECTION_UI_COLLAPSED_DETENT_STORAGE_KEY = 'batch-selector-ui-collapsed-d
 const FLOATING_BOX_POSITION_STORAGE_KEY = 'batch-selector-floating-box-position';
 const HIERARCHY_SECTION_OPEN_STORAGE_KEY = 'batch-selector-hierarchy-section-open';
 const OUTPUT_SECTION_OPEN_STORAGE_KEY = 'batch-selector-output-section-open';
+const COPY_PREVIEW_SECTION_OPEN_STORAGE_KEY = 'treeclip-copy-preview-open';
+const MAX_COPY_PREVIEW_LINES = 12;
+const MAX_COPY_PREVIEW_CHARS = 2000;
 
 function setSelectionKeyActive(active) {
   isShiftPressed = active;
@@ -988,6 +994,37 @@ style.textContent = `
     font-weight: 750;
     letter-spacing: -0.01em;
     line-height: 1.2;
+  }
+  .treeclip-copy-preview-stats {
+    margin-top: 8px;
+    color: #93a4bc;
+    font-size: 0.78em;
+  }
+  .treeclip-copy-preview-body {
+    margin: 6px 0 0;
+    padding: 8px 10px;
+    max-height: 160px;
+    overflow: auto;
+    border-radius: 10px;
+    background: rgba(9, 14, 24, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e8eefc;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: pointer;
+  }
+  .treeclip-copy-preview-body:hover {
+    border-color: rgba(74, 222, 128, 0.5);
+  }
+  .treeclip-copy-preview-more {
+    margin-top: 4px;
+    color: #93a4bc;
+    font-size: 0.75em;
   }
   .treeclip-selected-groups {
     margin-top: 12px;
@@ -3028,6 +3065,59 @@ function fitSelectionDetailsWithinViewport(notification, animatePosition = true)
   });
 }
 
+// =============================================
+// 复制预览 - 详情面板实时展示即将写入剪贴板的内容
+// =============================================
+// 取与真实复制完全同源的文本，避免预览与结果不一致
+function getCopyPreviewData() {
+  const text = updateClipboard({ write: false });
+  const view = truncatePreview(text, MAX_COPY_PREVIEW_LINES, MAX_COPY_PREVIEW_CHARS);
+  return { text, view };
+}
+
+// 收起态悬浮提示：展示前几段，便于快速确认选中内容
+function buildCompactPreviewTitle() {
+  const text = updateClipboard({ write: false });
+  if (!text) return t('ui_no_text_preview');
+
+  const segments = text.split('\n');
+  const head = segments.slice(0, 3).join('\n');
+  return segments.length > 3 ? `${head}\n…` : head;
+}
+
+// 构建复制预览区块
+function buildCopyPreviewHTML() {
+  const { text, view } = getCopyPreviewData();
+  const copyShortcut = copyKeyConfig.keys.map(formatKeyForDisplay).join('+');
+  const moreHTML = view.shown < view.total
+    ? `<div class="treeclip-copy-preview-more">${escapeHtml(t('ui_preview_truncated', view.shown, view.total))}</div>`
+    : '';
+  return `
+    <div class="treeclip-ios-disclosure-section">
+      <div id="copy-preview-header" class="treeclip-ios-section-header batch-selector-ui" role="button" aria-expanded="${isCopyPreviewExpanded}">
+        <span style="font-size: 0.9em;">${t('ui_copy_preview')}</span>
+        <span class="toggle-arrow" aria-hidden="true" style="transform: rotate(${isCopyPreviewExpanded ? '90deg' : '0deg'});">›</span>
+      </div>
+      <div id="copy-preview-content" style="display: ${isCopyPreviewExpanded ? 'block' : 'none'};">
+        <div id="copy-preview-stats" class="treeclip-copy-preview-stats">${escapeHtml(t('ui_preview_stats', view.total, text.length))}</div>
+        <pre id="copy-preview-body" class="treeclip-copy-preview-body batch-selector-ui" role="button" title="${escapeHtml(t('ui_copy_preview_hint', copyShortcut))}">${escapeHtml(view.text || t('ui_no_text_preview'))}</pre>
+        ${moreHTML}
+      </div>
+    </div>
+  `;
+}
+
+// 局部刷新复制预览，避免重建面板导致焦点与滚动位置丢失
+function refreshCopyPreview(notification) {
+  const body = notification.querySelector('#copy-preview-body');
+  const stats = notification.querySelector('#copy-preview-stats');
+  if (!body || !stats) return;
+
+  const { text, view } = getCopyPreviewData();
+  body.textContent = view.text || t('ui_no_text_preview');
+  stats.textContent = t('ui_preview_stats', view.total, text.length);
+}
+
 // 更新通知内容 (合并后的核心函数)
 function updateNotification(count) {
   // 移除可能已存在的通知
@@ -3108,10 +3198,13 @@ function updateNotification(count) {
       <button id="batch-selector-sheet-grabber" class="batch-selector-sheet-grabber batch-selector-ui" type="button" aria-label="${t('ui_drag_to_close')}" title="${t('ui_drag_to_close')}"></button>
     </div>
   `;
+  const compactPreviewTitle = isActionBarCompact
+    ? escapeHtml(buildCompactPreviewTitle())
+    : t('ui_btn_toggle_compact');
   const actionBarHTML = isActionBarCompact
     ? `
       <div class="batch-selector-action-bar batch-selector-action-bar-compact batch-selector-ui" role="toolbar" aria-label="${t('ui_action_bar_label')}">
-        <button id="batch-selector-action-mode-toggle" class="batch-selector-action-summary batch-selector-ui" title="${t('ui_btn_toggle_compact')}">
+        <button id="batch-selector-action-mode-toggle" class="batch-selector-action-summary batch-selector-ui" title="${compactPreviewTitle}">
           <span class="batch-selector-action-count">${count}</span>
           <span>${t('ui_selected_short')}</span>
         </button>
@@ -3256,6 +3349,8 @@ function updateNotification(count) {
     let contentHTML = '';
     let buttonsHTML = '';
 
+    const copyPreviewHTML = buildCopyPreviewHTML();
+
     if (isViewingChildren) {
       // =============================
       // 内部查看模式 UI 内容
@@ -3287,6 +3382,7 @@ function updateNotification(count) {
         <div style="font-size: 16px; font-weight: 700;">${t('ui_viewing_internal')}</div>
         <div style="font-size: 0.9em; margin: 5px 0; text-align: left; color: #aaa;">${t('ui_internal_desc')}</div>
         ${childrenHTML}
+        ${copyPreviewHTML}
         ${hierarchyHTML}
         <div style="font-size: 0.8em; margin-top: 8px; color: #aaa;">${t('ui_shortcut_nav_hint')}</div>
       `; // 注意这里是反引号 `
@@ -3378,6 +3474,7 @@ function updateNotification(count) {
           <div class="treeclip-details-title">${t('ui_details_title')}</div>
         </div>
         ${selectedTypesHTML}
+        ${copyPreviewHTML}
         ${selectorInfo}
         ${hierarchyHTML}
         ${outputFormatHTML}
@@ -3453,6 +3550,33 @@ function updateNotification(count) {
             const arrow = outputFormatHeader.querySelector('.toggle-arrow');
             if (arrow) arrow.style.transform = `rotate(${isOutputFormatExpanded ? '90deg' : '0deg'})`;
           }
+        }
+
+        // 点击预览正文直接复制当前内容
+        const copyPreviewBody = target.closest('#copy-preview-body');
+        if (copyPreviewBody) {
+          copySelectionToClipboard();
+          return;
+        }
+
+        // 与输出设置一致地展开或折叠复制预览区块
+        const copyPreviewHeader = target.closest('#copy-preview-header');
+        if (copyPreviewHeader) {
+          const copyPreviewContent = notification.querySelector('#copy-preview-content');
+          isCopyPreviewExpanded = !isCopyPreviewExpanded;
+          try { chrome.storage.local.set({ [COPY_PREVIEW_SECTION_OPEN_STORAGE_KEY]: isCopyPreviewExpanded }); } catch (e) { /* 保留当前会话状态。 */ }
+          copyPreviewHeader.setAttribute('aria-expanded', String(isCopyPreviewExpanded));
+          if (copyPreviewContent) {
+            animateDetailsDisclosure(
+              copyPreviewContent,
+              isCopyPreviewExpanded,
+              () => isCopyPreviewExpanded,
+              notification
+            );
+          }
+          const previewArrow = copyPreviewHeader.querySelector('.toggle-arrow');
+          if (previewArrow) previewArrow.style.transform = `rotate(${isCopyPreviewExpanded ? '90deg' : '0deg'})`;
+          return;
         }
 
         // 像输出设置一样展开或关闭整个“文本所在层级”区块。
@@ -3579,6 +3703,7 @@ function updateNotification(count) {
             clipboardFormat = newlySelectedFormat;
             try { chrome.storage.local.set({'batch-selector-clipboard-format': clipboardFormat}); } catch (e) { /* console.error('无法保存设置:', e); */ }
             updateClipboard(); // 更新剪贴板
+            refreshCopyPreview(notification);
 
           }
         });
@@ -3603,6 +3728,7 @@ function updateNotification(count) {
           }
           if (settingKey) { try { chrome.storage.local.set({ [settingKey]: isChecked }); } catch (e) { /* console.error('无法保存设置:', e); */ } }
           updateClipboard(); // 更新剪贴板
+          refreshCopyPreview(notification);
         });
       });
 
@@ -4419,6 +4545,7 @@ function loadUserSettings() {
       'batch-selector-hierarchy-expanded': false,
       [HIERARCHY_SECTION_OPEN_STORAGE_KEY]: false,
       [OUTPUT_SECTION_OPEN_STORAGE_KEY]: false,
+      [COPY_PREVIEW_SECTION_OPEN_STORAGE_KEY]: true,
       [TREECLIP_LOCALE_STORAGE_KEY]: null,
       [SELECTION_UI_DETENT_STORAGE_KEY]: 'actions',
       [SELECTION_UI_COLLAPSED_DETENT_STORAGE_KEY]: 'actions',
@@ -4445,6 +4572,7 @@ function loadUserSettings() {
       isHierarchyExpanded = Boolean(items['batch-selector-hierarchy-expanded']);
       isHierarchySectionOpen = Boolean(items[HIERARCHY_SECTION_OPEN_STORAGE_KEY]);
       isOutputFormatExpanded = Boolean(items[OUTPUT_SECTION_OPEN_STORAGE_KEY]);
+      isCopyPreviewExpanded = items[COPY_PREVIEW_SECTION_OPEN_STORAGE_KEY] !== false;
       const storedLocale = items[TREECLIP_LOCALE_STORAGE_KEY];
       if (SUPPORTED_TREECLIP_LOCALES.has(storedLocale)) {
         void setTreeClipLocale(storedLocale).then(applied => {

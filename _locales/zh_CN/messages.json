@@ -202,6 +202,29 @@
   "ui_no_text_preview": {
     "message": "无文本预览"
   },
+  "ui_copy_preview": {
+    "message": "复制预览"
+  },
+  "ui_copy_preview_hint": {
+    "message": "点击即复制，与按下 $KEY$ 复制的内容一致",
+    "placeholders": {
+      "key": { "content": "$1" }
+    }
+  },
+  "ui_preview_stats": {
+    "message": "$COUNT$ 段 · $CHARS$ 字符",
+    "placeholders": {
+      "count": { "content": "$1" },
+      "chars": { "content": "$2" }
+    }
+  },
+  "ui_preview_truncated": {
+    "message": "仅预览前 $SHOWN$ 段，共 $TOTAL$ 段",
+    "placeholders": {
+      "shown": { "content": "$1" },
+      "total": { "content": "$2" }
+    }
+  },
   "ui_click_to_expand": {
     "message": "点击展开"
   },

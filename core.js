@@ -144,6 +144,19 @@
     return processedTexts.join(separators[options.clipboardFormat] ?? separators.newline);
   }
 
+  function truncatePreview(text, maxLines = 12, maxChars = 2000) {
+    const source = String(text || '');
+    const allSegments = source.length === 0 ? [] : source.split('\n');
+    const shownSegments = allSegments.slice(0, maxLines);
+    const truncatedText = shownSegments.join('\n').slice(0, maxChars);
+
+    return {
+      text: truncatedText,
+      total: allSegments.length,
+      shown: truncatedText.length === 0 ? 0 : shownSegments.length
+    };
+  }
+
   function getNearestViewportAnchor(rect, viewportWidth, viewportHeight, snapThreshold = 56) {
     const distances = {
       left: Math.max(Number(rect?.left) || 0, 0),
@@ -167,7 +180,8 @@
     getSummaryTargetDetent,
     matchesElementType,
     normalizeShortcutKey,
-    parseElementTypeKey
+    parseElementTypeKey,
+    truncatePreview
   };
 
   globalScope.TreeClipCore = api;
