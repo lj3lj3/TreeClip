@@ -4009,16 +4009,23 @@ function cancelSelection() {
 // =============================================
 // 剪贴板管理系统 - 处理选中内容的复制和格式化
 // =============================================
-// 写入剪贴板：非安全上下文（http 页面）没有 navigator.clipboard，回退到 execCommand
+// 写入剪贴板：优先异步剪贴板 API，缺失或被拒时统一回退到 execCommand
 function writeTextToClipboard(text) {
   if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
+    return navigator.clipboard.writeText(text).catch(() => writeTextByExecCommand(text));
   }
   return writeTextByExecCommand(text);
 }
 
-// 兼容 http 页面：用隐藏 textarea + execCommand('copy') 兜底写入剪贴板
+// 兜底写入：隐藏 textarea + execCommand('copy')，并直接向 copy 事件写入数据
 function writeTextByExecCommand(text) {
+  const handleCopyEvent = event => {
+    if (!event.clipboardData) return;
+    event.clipboardData.setData('text/plain', text);
+    event.preventDefault();
+  };
+  document.addEventListener('copy', handleCopyEvent, true);
+
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.setAttribute('readonly', '');
@@ -4026,13 +4033,23 @@ function writeTextByExecCommand(text) {
   textarea.style.top = '0';
   textarea.style.left = '0';
   textarea.style.opacity = '0';
+  textarea.style.userSelect = 'text';
+  textarea.style.webkitUserSelect = 'text';
   document.body.appendChild(textarea);
 
   const previousActiveElement = document.activeElement;
+  textarea.focus({ preventScroll: true });
   textarea.select();
-  const copySucceeded = document.execCommand('copy');
-  textarea.remove();
-  if (previousActiveElement instanceof HTMLElement) previousActiveElement.focus();
+  textarea.setSelectionRange(0, text.length);
+
+  let copySucceeded = false;
+  try {
+    copySucceeded = document.execCommand('copy');
+  } finally {
+    textarea.remove();
+    document.removeEventListener('copy', handleCopyEvent, true);
+    if (previousActiveElement instanceof HTMLElement) previousActiveElement.focus({ preventScroll: true });
+  }
 
   return copySucceeded ? Promise.resolve() : Promise.reject(new Error('execCommand copy failed'));
 }
